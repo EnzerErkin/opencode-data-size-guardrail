@@ -44,12 +44,10 @@ Add:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "file:///Users/you/.config/opencode/node_modules/opencode-data-size-guardrail/dist/index.js"
+    "opencode-data-size-guardrail"
   ]
 }
 ```
-
-Replace `/Users/you` with your home directory. This points OpenCode at the package installed by `bun add` in `~/.config/opencode`.
 
 Restart:
 
@@ -61,7 +59,7 @@ That is it.
 
 Use `opencode.jsonc` for your personal/global config. Use `opencode.json` for project/shared config.
 
-Do not use `bun add -g` for OpenCode plugins unless you know your OpenCode install resolves global Bun packages. The reliable setup is installing the package in `~/.config/opencode` and loading it from that `node_modules` path.
+Do not use `bun add -g` for OpenCode plugins unless you know your OpenCode install resolves global Bun packages. The reliable setup is installing the package in `~/.config/opencode`.
 
 ## The One Rule
 
