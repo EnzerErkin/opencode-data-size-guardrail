@@ -1,39 +1,41 @@
 # opencode-data-size-guardrail
 
-## 🤯 Stop OpenCode Agents From Eating Giant Files
+## 🤯 Your Agent Ran `cat huge.json` And Your Tokens Died
 
-OpenCode agents can accidentally dump huge files into the LLM context:
+Your agent runs this:
 
 ```sh
 cat token_flow_analysis.json
 ```
 
-Example disaster:
+Looks harmless.
+
+But the file is this big:
 
 ```text
-218.5 MB file
+218.5 MB
 ~54,625,000 tokens
 ```
 
-That is slow, expensive, and usually useless.
+Now your LLM is slow, confused, and expensive.
 
-This plugin blocks obvious token bombs before raw data enters the LLM context.
+`opencode-data-size-guardrail` stops that.
+
+It is a tiny OpenCode plugin that warns or blocks when an agent tries to read, print, or create giant raw data files.
 
 ## Install
-
-Install globally:
 
 ```sh
 bun add -g opencode-data-size-guardrail
 ```
 
-Open your global OpenCode config:
+Open:
 
 ```text
 ~/.config/opencode/opencode.jsonc
 ```
 
-Add the plugin:
+Add:
 
 ```jsonc
 {
@@ -44,29 +46,21 @@ Add the plugin:
 }
 ```
 
-Restart OpenCode:
+Restart:
 
 ```sh
 opencode
 ```
 
-Notes:
+That is it.
 
-- Use `opencode.jsonc` for personal/global config.
-- Use `opencode.json` for project/shared config.
-- Restart OpenCode after changing config.
+Use `opencode.jsonc` for your personal/global config. Use `opencode.json` for project/shared config.
 
-## The Rule
+## The One Rule
 
-Large raw data can exist on disk.
+Big raw files can live on disk.
 
-It should not enter the LLM context.
-
-Good:
-
-```text
-raw data -> local script -> small summary/stats/sample -> LLM
-```
+They should not go into the LLM.
 
 Bad:
 
@@ -74,48 +68,56 @@ Bad:
 raw data -> giant JSON -> LLM reads giant JSON -> token explosion
 ```
 
-## Default Behavior
+Good:
+
+```text
+raw data -> local script -> small summary -> LLM
+```
+
+The script does the heavy lifting. The LLM reads the tiny result.
+
+## What It Does
 
 Reads:
 
-| File size | Behavior |
+| Size | Behavior |
 | ---: | --- |
-| over `5 MB` | warn/log only |
-| over `20 MB` | soft-block with override instructions |
-| over `100 MB` | hard-block |
+| `> 5 MB` | warn |
+| `> 20 MB` | soft-block |
+| `> 100 MB` | hard-block |
 
 Generated files:
 
-| File size | Behavior |
+| Size | Behavior |
 | ---: | --- |
-| over `20 MB` | warn and record |
-| over `100 MB` | mark dangerous and block future direct reads |
+| `> 20 MB` | warn and record |
+| `> 100 MB` | mark dangerous and block future reads |
 
-The real failure file `token_flow_analysis.json` was `218.5 MB`, so it is blocked by default.
+Soft-block means: stop by default, but show the exact override command.
 
-## Why This Exists
+## Real Example
 
-This came from a real AI-agent mistake while analyzing Marvin/MCP session data.
+This plugin came from a real OpenCode mistake.
 
-The agent processed `295` archive/debug sessions, fetched full token values, and wrote one raw file:
+An agent analyzed Marvin/MCP sessions, fetched full token values, and wrote this file:
 
 ```text
 token_flow_analysis.json    218.5 MB    ~54,625,000 tokens
 ```
 
-The script was not the problem.
+The problem was not running a script.
 
-The problem was the risk of the LLM reading the giant raw output.
+The problem was creating a giant raw file that the LLM might read next.
 
-The safer workflow should have been:
+The safe version should have been:
 
 ```text
-MCP sessions -> local aggregation -> small summary/stats/sample -> LLM
+MCP sessions -> local aggregation -> summary.md -> LLM
 ```
 
-This plugin is not MCP-specific. It protects the same mistake for local files, logs, JSON, JSONL, NDJSON, CSV, AWS, curl, custom scripts, and generated reports.
+This plugin catches the same mistake for logs, JSON, JSONL, NDJSON, CSV, AWS exports, curl downloads, MCP data, custom scripts, and generated reports.
 
-## Example Block Message
+## What The Agent Sees
 
 ```text
 Blocked by opencode-data-size-guardrail.
@@ -130,7 +132,7 @@ Use a safer workflow:
 - generate a small summary JSON/Markdown file
 ```
 
-Soft blocks tell you how to continue:
+For soft blocks, it also shows how to continue:
 
 ```sh
 OPENCODE_DSG_ALLOW_LARGE_FILES=true opencode
@@ -142,9 +144,9 @@ or:
 OPENCODE_DSG_MAX_READ_BYTES=209715200 opencode
 ```
 
-## Commands It Catches
+## Bad Commands
 
-Risky reads:
+These are risky:
 
 ```sh
 cat token_flow_analysis.json
@@ -155,7 +157,7 @@ jq . giant-file
 grep ERROR huge.log
 ```
 
-Unbounded exports and collection scripts:
+These are risky if they have no limit/sample/filter/summary:
 
 ```sh
 node collect_token_flows.mjs
@@ -169,9 +171,9 @@ wget https://example.com/events.jsonl -O events.jsonl
 mcp export everything
 ```
 
-## Safe Alternatives
+## Good Commands
 
-Use limits, samples, summaries, date filters, or local aggregation:
+Do this instead:
 
 ```sh
 cat token_flow_analysis.json | head -n 50
@@ -183,7 +185,7 @@ python scripts/profile_csv.py huge.csv > profile.md
 node collect_token_flows.mjs --limit 10 --summary
 ```
 
-Good files for agents to read:
+Good files for agents:
 
 - `summary.md`
 - `sample.json`
@@ -195,20 +197,19 @@ Good files for agents to read:
 
 You probably do not need config.
 
-| Variable | Default | What it does |
+| Variable | Default | Meaning |
 | --- | ---: | --- |
-| `OPENCODE_DSG_WARN_READ_BYTES` | `5242880` | Warn when a direct read is over `5 MB`. |
-| `OPENCODE_DSG_ASK_READ_BYTES` | `20971520` | Soft-block when a direct read is over `20 MB`. |
-| `OPENCODE_DSG_MAX_READ_BYTES` | `104857600` | Hard-block when a direct read is over `100 MB`. |
-| `OPENCODE_DSG_WARN_GENERATED_BYTES` | `20971520` | Warn and record when a generated file is over `20 MB`. |
-| `OPENCODE_DSG_MAX_GENERATED_BYTES` | `104857600` | Mark dangerous when a generated file is over `100 MB`. |
-| `OPENCODE_DSG_ALLOW_LARGE_FILES` | `false` | Warn only, never block. |
+| `OPENCODE_DSG_WARN_READ_BYTES` | `5242880` | warn over 5 MB |
+| `OPENCODE_DSG_ASK_READ_BYTES` | `20971520` | soft-block over 20 MB |
+| `OPENCODE_DSG_MAX_READ_BYTES` | `104857600` | hard-block over 100 MB |
+| `OPENCODE_DSG_WARN_GENERATED_BYTES` | `20971520` | warn/record generated files over 20 MB |
+| `OPENCODE_DSG_MAX_GENERATED_BYTES` | `104857600` | dangerous generated files over 100 MB |
+| `OPENCODE_DSG_ALLOW_LARGE_FILES` | `false` | warn only, never block |
 
-Human-friendly suffixes work too:
+Examples:
 
 ```sh
 OPENCODE_DSG_MAX_READ_BYTES=200mb opencode
-OPENCODE_DSG_MAX_GENERATED_BYTES=250mb opencode
 OPENCODE_DSG_ALLOW_LARGE_FILES=true opencode
 ```
 
@@ -218,12 +219,12 @@ Generated large files are recorded in:
 .opencode-data-size-guardrail.json
 ```
 
-## Limitations
+## Limits
 
-- Shell detection is heuristic, not a full shell parser.
+- It is heuristic, not a full shell parser.
 - Weird commands can slip through.
-- Safe commands can occasionally be blocked.
-- No dashboard, database, or external service.
+- Safe commands can sometimes be blocked.
+- No dashboard. No database. No external service.
 
 The goal is simple: stop obvious token disasters.
 
