@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { buildHardReadBlockError } from "../src/errors";
-import { checkRead } from "../src/index";
+import dataSizeGuardrailPlugin, { checkRead, id, server } from "../src/index";
 import { estimatedTokens, formatBytes, parseBytes } from "../src/size";
 import { mkdtempSync, openSync, closeSync, truncateSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -119,5 +119,49 @@ describe("read blocking", () => {
     expect(error.message).toContain("Size: 218.5 MB");
     expect(error.message).toContain("Estimated tokens: ~54,625,000");
     expect(error.message).toContain("aggregate locally");
+  });
+
+  test("OpenCode tool.execute.before hook blocks large read payloads", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dsg-hook-"));
+    try {
+      const filePath = path.join(dir, "token_flow_analysis.json");
+      const fd = openSync(filePath, "w");
+      closeSync(fd);
+      truncateSync(filePath, 120 * mib);
+
+      const hooks = await server({ directory: dir });
+
+      await expect(hooks["tool.execute.before"]?.(
+        { tool: "read", sessionID: "test", callID: "call" },
+        { args: { filePath: "token_flow_analysis.json" } },
+      )).rejects.toThrow("Blocked by opencode-data-size-guardrail");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("OpenCode plugin input with object project.directory still resolves root", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "dsg-hook-"));
+    try {
+      const filePath = path.join(dir, "token_flow_analysis.json");
+      const fd = openSync(filePath, "w");
+      closeSync(fd);
+      truncateSync(filePath, 120 * mib);
+
+      const hooks = await server({ worktree: dir, project: { directory: { path: dir } } });
+
+      await expect(hooks["tool.execute.before"]?.(
+        { tool: "read", sessionID: "test", callID: "call" },
+        { args: { filePath: "token_flow_analysis.json" } },
+      )).rejects.toThrow("Blocked by opencode-data-size-guardrail");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("default export uses OpenCode plugin module shape", () => {
+    expect(id).toBe("opencode-data-size-guardrail");
+    expect(dataSizeGuardrailPlugin.id).toBe(id);
+    expect(dataSizeGuardrailPlugin.server).toBe(server);
   });
 });

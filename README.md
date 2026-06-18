@@ -25,8 +25,11 @@ It is a tiny OpenCode plugin that warns or blocks when an agent tries to read, p
 
 ## Install
 
+Install the plugin where OpenCode can resolve it:
+
 ```sh
-bun add -g opencode-data-size-guardrail
+cd ~/.config/opencode
+bun add opencode-data-size-guardrail
 ```
 
 Open:
@@ -41,10 +44,12 @@ Add:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "opencode-data-size-guardrail"
+    "file:///Users/you/.config/opencode/node_modules/opencode-data-size-guardrail/dist/index.js"
   ]
 }
 ```
+
+Replace `/Users/you` with your home directory. This points OpenCode at the package installed by `bun add` in `~/.config/opencode`.
 
 Restart:
 
@@ -55,6 +60,8 @@ opencode
 That is it.
 
 Use `opencode.jsonc` for your personal/global config. Use `opencode.json` for project/shared config.
+
+Do not use `bun add -g` for OpenCode plugins unless you know your OpenCode install resolves global Bun packages. The reliable setup is installing the package in `~/.config/opencode` and loading it from that `node_modules` path.
 
 ## The One Rule
 
@@ -236,3 +243,24 @@ bun test
 bun run build
 bun run typecheck
 ```
+
+## Publish
+
+Before publishing, verify and build:
+
+```sh
+bun test
+bun run typecheck
+bun run build
+npm publish --access public
+```
+
+After publishing, reinstall the npm package for OpenCode:
+
+```sh
+cd ~/.config/opencode
+bun remove opencode-data-size-guardrail
+bun add opencode-data-size-guardrail@latest
+```
+
+Then restart OpenCode so it reloads the plugin.

@@ -21,17 +21,21 @@ import {
 } from "./errors";
 
 interface PluginInput {
-  directory?: string;
+  directory?: unknown;
+  worktree?: unknown;
   project?: {
-    root?: string;
-    directory?: string;
+    root?: unknown;
+    directory?: unknown;
+    worktree?: unknown;
   };
 }
 
 type HookPayload = Record<string, unknown>;
 type HookOutput = { args?: unknown } & Record<string, unknown>;
 
-export default async function dataSizeGuardrailPlugin(input: PluginInput = {}) {
+export const id = "opencode-data-size-guardrail";
+
+export async function server(input: PluginInput = {}) {
   const rootDir = resolveRootDir(input);
   const config = loadConfig();
   let lastBashSnapshot: FileSnapshot | undefined;
@@ -101,6 +105,8 @@ export default async function dataSizeGuardrailPlugin(input: PluginInput = {}) {
   };
 }
 
+export default { id, server };
+
 export function checkRead(filePath: string, rootDir: string, config: GuardrailConfig): void {
   const absolutePath = resolvePath(rootDir, filePath);
   const recorded = findRecordedDangerousFile(rootDir, absolutePath);
@@ -132,7 +138,15 @@ export function checkRead(filePath: string, rootDir: string, config: GuardrailCo
 }
 
 function resolveRootDir(input: PluginInput): string {
-  return path.resolve(input.project?.root ?? input.project?.directory ?? input.directory ?? process.cwd());
+  return path.resolve(
+    firstString(
+      input.directory,
+      input.worktree,
+      input.project?.root,
+      input.project?.worktree,
+      input.project?.directory,
+    ) ?? process.cwd(),
+  );
 }
 
 function getToolName(input: HookPayload): string | undefined {
