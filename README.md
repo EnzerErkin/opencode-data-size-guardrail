@@ -29,8 +29,11 @@ Install the plugin where OpenCode can resolve it:
 
 ```sh
 cd ~/.config/opencode
-bun add opencode-data-size-guardrail
+bun add opencode-data-size-guardrail@latest
+bun pm pkg get dependencies.opencode-data-size-guardrail
 ```
+
+The second command prints the installed version range, for example `^0.1.1`. Use the version number without `^` in the plugin config, for example `0.1.1`.
 
 Open:
 
@@ -39,6 +42,17 @@ Open:
 ```
 
 Add:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "opencode-data-size-guardrail@<installed-version>"
+  ]
+}
+```
+
+Example if Bun installed `^0.1.1`:
 
 ```jsonc
 {
@@ -258,7 +272,10 @@ After publishing, install the npm package for OpenCode and pin the plugin spec t
 ```sh
 cd ~/.config/opencode
 bun remove opencode-data-size-guardrail
-bun add opencode-data-size-guardrail@0.1.1
+bun add opencode-data-size-guardrail@latest
+bun pm pkg get dependencies.opencode-data-size-guardrail
 ```
+
+Then update `~/.config/opencode/opencode.jsonc` to use that published version, for example `opencode-data-size-guardrail@0.1.1`.
 
 Then restart OpenCode so it reloads the plugin.
