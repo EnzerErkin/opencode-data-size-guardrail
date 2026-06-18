@@ -1,0 +1,30 @@
+{
+  "name": "opencode-data-size-guardrail",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that blocks accidental huge data reads and exports.",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target=node --format=esm",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "guardrail",
+    "tokens",
+    "data"
+  ],
+  "license": "MIT"
+}
