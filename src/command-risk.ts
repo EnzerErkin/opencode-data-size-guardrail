@@ -1,5 +1,6 @@
 export interface CommandRisk {
   blocked: boolean;
+  action?: "allow" | "warn" | "soft-block" | "hard-block";
   reason?: string;
   kind?: "direct-read" | "large-grep" | "unbounded-export";
   filePath?: string;
@@ -7,6 +8,8 @@ export interface CommandRisk {
 }
 
 export interface AnalyzeCommandRiskOptions {
+  warnReadBytes?: number;
+  askReadBytes?: number;
   maxReadBytes?: number;
   getFileSize?: (filePath: string) => number | undefined;
 }
@@ -19,10 +22,10 @@ export function analyzeCommandRisk(command: string, options: AnalyzeCommandRiskO
   if (!trimmed) return { blocked: false };
 
   const directReadRisk = detectDirectRead(trimmed, options);
-  if (directReadRisk.blocked) return directReadRisk;
+  if (directReadRisk.action) return directReadRisk;
 
   const grepRisk = detectLargeUnboundedGrep(trimmed, options);
-  if (grepRisk.blocked) return grepRisk;
+  if (grepRisk.action) return grepRisk;
 
   const exportRisk = detectUnboundedExport(trimmed);
   if (exportRisk.blocked) return exportRisk;
@@ -42,7 +45,7 @@ function detectDirectRead(command: string, options: AnalyzeCommandRiskOptions): 
       const target = tokens.slice(1).find(isRiskyDataTarget);
       if (target) {
         return {
-          blocked: true,
+          ...actionForBytes(options.getFileSize?.(target), options, "soft-block"),
           kind: "direct-read",
           filePath: target,
           bytes: options.getFileSize?.(target),
@@ -55,13 +58,14 @@ function detectDirectRead(command: string, options: AnalyzeCommandRiskOptions): 
       const filterIndex = firstNonOptionIndex(tokens, 1);
       const filter = filterIndex === -1 ? undefined : tokens[filterIndex];
       if (filter === ".") {
+        const threshold = options.warnReadBytes ?? options.askReadBytes ?? options.maxReadBytes ?? 0;
         const target = tokens.slice(filterIndex + 1).find((token) => {
           const bytes = options.getFileSize?.(token);
-          return isRiskyDataTarget(token) || (bytes !== undefined && bytes > (options.maxReadBytes ?? 0));
+          return isRiskyDataTarget(token) || (bytes !== undefined && bytes > threshold);
         });
         if (target) {
           return {
-            blocked: true,
+            ...actionForBytes(options.getFileSize?.(target), options, "soft-block"),
             kind: "direct-read",
             filePath: target,
             bytes: options.getFileSize?.(target),
@@ -80,7 +84,7 @@ function detectLargeUnboundedGrep(command: string, options: AnalyzeCommandRiskOp
     return { blocked: false };
   }
 
-  const maxReadBytes = options.maxReadBytes ?? Number.POSITIVE_INFINITY;
+  const warnReadBytes = options.warnReadBytes ?? options.maxReadBytes ?? Number.POSITIVE_INFINITY;
 
   for (const segment of commandSegments(command)) {
     const tokens = tokenize(segment);
@@ -92,9 +96,9 @@ function detectLargeUnboundedGrep(command: string, options: AnalyzeCommandRiskOp
     for (const token of tokens.slice(patternIndex + 1)) {
       if (token.startsWith("-")) continue;
       const bytes = options.getFileSize?.(token);
-      if (bytes !== undefined && bytes > maxReadBytes) {
+      if (bytes !== undefined && bytes > warnReadBytes) {
         return {
-          blocked: true,
+          ...actionForBytes(bytes, options, "soft-block"),
           kind: "large-grep",
           filePath: token,
           bytes,
@@ -118,9 +122,27 @@ function detectUnboundedExport(command: string): CommandRisk {
 
   return {
     blocked: true,
+    action: "soft-block",
     kind: "unbounded-export",
     reason: "large export/download command has no obvious limit, date range, sample, filter, or aggregation",
   };
+}
+
+function actionForBytes(
+  bytes: number | undefined,
+  options: AnalyzeCommandRiskOptions,
+  fallback: "soft-block" | "hard-block",
+): Pick<CommandRisk, "action" | "blocked"> {
+  if (bytes === undefined) return { action: fallback, blocked: true };
+
+  const warnReadBytes = options.warnReadBytes ?? Number.POSITIVE_INFINITY;
+  const askReadBytes = options.askReadBytes ?? options.maxReadBytes ?? Number.POSITIVE_INFINITY;
+  const maxReadBytes = options.maxReadBytes ?? Number.POSITIVE_INFINITY;
+
+  if (bytes > maxReadBytes) return { action: "hard-block", blocked: true };
+  if (bytes > askReadBytes) return { action: "soft-block", blocked: true };
+  if (bytes > warnReadBytes) return { action: "warn", blocked: false };
+  return { action: fallback, blocked: true };
 }
 
 function hasOutputLimiter(command: string): boolean {

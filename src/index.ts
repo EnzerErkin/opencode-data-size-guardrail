@@ -4,16 +4,20 @@ import { analyzeCommandRisk } from "./command-risk";
 import { type GuardrailConfig, loadConfig } from "./config";
 import {
   createFileSnapshot,
-  findLargeGeneratedFiles,
+  findGeneratedFilesOverThreshold,
   findRecordedDangerousFile,
   type FileSnapshot,
   recordDangerousFiles,
 } from "./generated-files";
 import {
   buildCommandBlockedError,
+  buildCommandWarningMessage,
   buildGeneratedFilesError,
-  buildLargeReadError,
+  buildGeneratedFilesWarningMessage,
+  buildHardReadBlockError,
+  buildReadWarningMessage,
   buildRecordedDangerousFileError,
+  buildSoftReadBlockError,
 } from "./errors";
 
 interface PluginInput {
@@ -47,12 +51,21 @@ export default async function dataSizeGuardrailPlugin(input: PluginInput = {}) {
       if (!command) return;
 
       const risk = analyzeCommandRisk(command, {
+        warnReadBytes: config.warnReadBytes,
+        askReadBytes: config.askReadBytes,
         maxReadBytes: config.maxReadBytes,
         getFileSize: (filePath) => getFileSize(rootDir, filePath),
       });
 
-      if (risk.blocked) {
-        const error = buildCommandBlockedError(command, risk.reason ?? "risky command", risk.bytes);
+      if (risk.action === "warn") {
+        warn(buildCommandWarningMessage(command, risk.reason ?? "risky command", risk.bytes));
+      } else if (risk.blocked) {
+        const error = buildCommandBlockedError(
+          command,
+          risk.reason ?? "risky command",
+          risk.bytes,
+          risk.action !== "hard-block",
+        );
         if (!config.allowLargeFiles) throw error;
         warn(error.message);
       }
@@ -67,14 +80,23 @@ export default async function dataSizeGuardrailPlugin(input: PluginInput = {}) {
       const after = tryCreateSnapshot(rootDir);
       if (!after) return;
 
-      const dangerousFiles = findLargeGeneratedFiles(before, after, config.maxGeneratedFileBytes);
-      recordDangerousFiles(rootDir, dangerousFiles);
+      const generatedFiles = findGeneratedFilesOverThreshold(before, after, {
+        warnGeneratedBytes: config.warnGeneratedBytes,
+        maxGeneratedFileBytes: config.maxGeneratedFileBytes,
+      });
+      recordDangerousFiles(rootDir, generatedFiles);
 
-      if (dangerousFiles.length === 0) return;
+      if (generatedFiles.length === 0) return;
 
-      const error = buildGeneratedFilesError(dangerousFiles);
-      if (!config.allowLargeFiles) throw error;
-      warn(error.message);
+      const dangerousFiles = generatedFiles.filter((file) => file.severity === "dangerous");
+      if (dangerousFiles.length > 0) {
+        const error = buildGeneratedFilesError(dangerousFiles);
+        if (!config.allowLargeFiles) throw error;
+        warn(error.message);
+        return;
+      }
+
+      warn(buildGeneratedFilesWarningMessage(generatedFiles));
     },
   };
 }
@@ -90,11 +112,23 @@ export function checkRead(filePath: string, rootDir: string, config: GuardrailCo
 
   if (!existsSync(absolutePath)) return;
   const stat = statSync(absolutePath);
-  if (!stat.isFile() || stat.size <= config.maxReadBytes) return;
+  if (!stat.isFile() || stat.size <= config.warnReadBytes) return;
 
-  const error = buildLargeReadError(filePath, stat.size);
-  if (!config.allowLargeFiles) throw error;
-  warn(error.message);
+  if (stat.size > config.maxReadBytes) {
+    const error = buildHardReadBlockError(filePath, stat.size);
+    if (!config.allowLargeFiles) throw error;
+    warn(error.message);
+    return;
+  }
+
+  if (stat.size > config.askReadBytes) {
+    const error = buildSoftReadBlockError(filePath, stat.size);
+    if (!config.allowLargeFiles) throw error;
+    warn(error.message);
+    return;
+  }
+
+  warn(buildReadWarningMessage(filePath, stat.size));
 }
 
 function resolveRootDir(input: PluginInput): string {

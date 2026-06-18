@@ -20,6 +20,7 @@ export interface DangerousGeneratedFile {
   size: number;
   estimatedTokens: number;
   detectedAt: string;
+  severity: "warning" | "dangerous";
 }
 
 export interface GuardrailState {
@@ -49,11 +50,22 @@ export function findLargeGeneratedFiles(
   after: FileSnapshot,
   maxGeneratedFileBytes: number,
 ): DangerousGeneratedFile[] {
+  return findGeneratedFilesOverThreshold(before, after, {
+    warnGeneratedBytes: maxGeneratedFileBytes,
+    maxGeneratedFileBytes,
+  }).map((file) => ({ ...file, severity: "dangerous" }));
+}
+
+export function findGeneratedFilesOverThreshold(
+  before: FileSnapshot,
+  after: FileSnapshot,
+  thresholds: { warnGeneratedBytes: number; maxGeneratedFileBytes: number },
+): DangerousGeneratedFile[] {
   const now = new Date().toISOString();
   const dangerous: DangerousGeneratedFile[] = [];
 
   for (const [relativePath, entry] of Object.entries(after.files)) {
-    if (entry.size <= maxGeneratedFileBytes) continue;
+    if (entry.size <= thresholds.warnGeneratedBytes) continue;
 
     const previous = before.files[relativePath];
     const createdOrModified = previous === undefined
@@ -68,6 +80,7 @@ export function findLargeGeneratedFiles(
       size: entry.size,
       estimatedTokens: estimatedTokens(entry.size),
       detectedAt: now,
+      severity: entry.size > thresholds.maxGeneratedFileBytes ? "dangerous" : "warning",
     });
   }
 
@@ -82,7 +95,9 @@ export function readGuardrailState(rootDir: string): GuardrailState {
     const parsed = JSON.parse(readFileSync(statePath, "utf8")) as Partial<GuardrailState>;
     return {
       version: 1,
-      dangerousFiles: Array.isArray(parsed.dangerousFiles) ? parsed.dangerousFiles : [],
+      dangerousFiles: Array.isArray(parsed.dangerousFiles)
+        ? parsed.dangerousFiles.map((file) => ({ ...file, severity: file.severity ?? "dangerous" }))
+        : [],
     };
   } catch {
     return { version: 1, dangerousFiles: [] };
@@ -106,7 +121,9 @@ export function recordDangerousFiles(rootDir: string, files: DangerousGeneratedF
 
 export function findRecordedDangerousFile(rootDir: string, filePath: string): DangerousGeneratedFile | undefined {
   const relativePath = normalizeRelativePath(rootDir, filePath);
-  return readGuardrailState(rootDir).dangerousFiles.find((file) => file.path === relativePath);
+  return readGuardrailState(rootDir).dangerousFiles.find(
+    (file) => file.path === relativePath && file.severity === "dangerous",
+  );
 }
 
 function walk(rootDir: string, currentDir: string, files: Record<string, FileSnapshotEntry>): void {
