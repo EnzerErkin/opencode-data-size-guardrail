@@ -29,11 +29,8 @@ Install the plugin where OpenCode can resolve it:
 
 ```sh
 cd ~/.config/opencode
-bun add opencode-data-size-guardrail@latest
-bun pm pkg get dependencies.opencode-data-size-guardrail
+bun add opencode-data-size-guardrail
 ```
-
-The second command prints the installed version range, for example `^0.1.1`. Use the version number without `^` in the plugin config, for example `0.1.1`.
 
 Open:
 
@@ -47,18 +44,7 @@ Add:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "opencode-data-size-guardrail@<installed-version>"
-  ]
-}
-```
-
-Example if Bun installed `^0.1.1`:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "opencode-data-size-guardrail@0.1.1"
+    "opencode-data-size-guardrail"
   ]
 }
 ```
@@ -74,6 +60,8 @@ That is it.
 Use `opencode.jsonc` for your personal/global config. Use `opencode.json` for project/shared config.
 
 Do not use `bun add -g` for OpenCode plugins unless you know your OpenCode install resolves global Bun packages. The reliable setup is installing the package in `~/.config/opencode`.
+
+If OpenCode still loads an old plugin after reinstalling, pin the version in `opencode.jsonc`, for example `opencode-data-size-guardrail@0.1.1`.
 
 ## The One Rule
 
@@ -267,15 +255,12 @@ bun run build
 npm publish --access public
 ```
 
-After publishing, install the npm package for OpenCode and pin the plugin spec to the published version:
+After publishing, reinstall the npm package for OpenCode:
 
 ```sh
 cd ~/.config/opencode
 bun remove opencode-data-size-guardrail
 bun add opencode-data-size-guardrail@latest
-bun pm pkg get dependencies.opencode-data-size-guardrail
 ```
-
-Then update `~/.config/opencode/opencode.jsonc` to use that published version, for example `opencode-data-size-guardrail@0.1.1`.
 
 Then restart OpenCode so it reloads the plugin.
