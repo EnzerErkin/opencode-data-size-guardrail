@@ -44,7 +44,7 @@ Add:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "opencode-data-size-guardrail"
+    "opencode-data-size-guardrail@0.1.1"
   ]
 }
 ```
@@ -253,12 +253,12 @@ bun run build
 npm publish --access public
 ```
 
-After publishing, reinstall the npm package for OpenCode:
+After publishing, install the npm package for OpenCode and pin the plugin spec to the published version:
 
 ```sh
 cd ~/.config/opencode
 bun remove opencode-data-size-guardrail
-bun add opencode-data-size-guardrail@latest
+bun add opencode-data-size-guardrail@0.1.1
 ```
 
 Then restart OpenCode so it reloads the plugin.
